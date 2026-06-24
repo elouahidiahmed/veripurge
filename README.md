@@ -1,144 +1,145 @@
 # VeriPurge
 
+📖 **English** · [Français](LISEZ-MOI.md)
+
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?logo=powershell&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Standard](https://img.shields.io/badge/NIST-SP%20800--88%20Rev.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 
-**Verified purge** de preuves forensiques (poste **Windows** + partage **SharePoint Online**),
-avec génération automatique d'un **Certificate of Destruction** signé et horodaté.
+**Verified purge** of forensic evidence (**Windows** workstation + **SharePoint Online**
+share), with automatic generation of a signed, timestamped **Certificate of Destruction**.
 
-> Principe DFIR : on **détruit la donnée** mais on **conserve la preuve de destruction**.
-> Le *quoi* est prouvé par les **empreintes cryptographiques** relevées avant destruction ;
-> le *que cela a eu lieu* est prouvé par le **certificat signé + horodaté**.
-> Référence : **NIST SP 800-88 Rev.1** (Guidelines for Media Sanitization).
+> DFIR principle: you **destroy the data** but **keep the proof of destruction**.
+> The *what* is proven by the **cryptographic hashes** captured before destruction;
+> the *that it happened* is proven by the **signed + timestamped certificate**.
+> Reference: **NIST SP 800-88 Rev.1** (Guidelines for Media Sanitization).
 
 > [!WARNING]
-> **VeriPurge détruit des données de façon irréversible.** Utilisez-le uniquement sur des
-> données dont vous êtes propriétaire ou pour lesquelles vous avez une **autorisation écrite**
-> de destruction, et **jamais** sous *legal hold*. Lancez toujours d'abord le **mode Preview**
-> (sans `-Confirm`) pour relire l'inventaire. Les auteurs déclinent toute responsabilité en cas
-> de perte de données. Voir [SECURITY.md](SECURITY.md).
+> **VeriPurge destroys data irreversibly.** Use it only on data you own or for which you
+> hold **written authorization** to destroy, and **never** under a *legal hold*. Always run
+> **Preview mode** first (without `-Confirm`) to review the inventory. The authors accept no
+> liability for data loss. See [SECURITY.md](SECURITY.md).
 
-## Structure
+## Layout
 
 ```
 veripurge/
-├─ Invoke-Disposition.ps1      # orchestrateur (Preview par défaut, Destroy avec -Confirm)
-├─ Verify-Certificate.ps1      # revérifie hash + signature d'un certificat émis
-├─ New-SigningCertificate.ps1  # génère un cert X.509 auto-signé / liste les clés GPG
-├─ config.example.json         # à copier en config.json et adapter
+├─ Invoke-Disposition.ps1      # orchestrator (Preview by default, Destroy with -Confirm)
+├─ Verify-Certificate.ps1      # re-verifies hash + signature of an issued certificate
+├─ New-SigningCertificate.ps1  # generates a self-signed X.509 cert / lists GPG keys
+├─ config.example.json         # copy to config.json and adapt
 ├─ modules/
-│  ├─ LocalSanitize.psm1       # overwrite multi-passes + manifeste (poste Windows)
-│  ├─ SharePointSanitize.psm1  # suppression + purge corbeilles (SPO via PnP)
-│  └─ Certificate.psm1         # manifeste JSON + certificat HTML + signature CMS/GPG + RFC3161
-└─ certificates/               # sorties (créé à l'exécution, git-ignoré)
+│  ├─ LocalSanitize.psm1       # multi-pass overwrite + manifest (Windows host)
+│  ├─ SharePointSanitize.psm1  # delete + empty recycle bins (SPO via PnP)
+│  └─ Certificate.psm1         # JSON manifest + HTML certificate + CMS/GPG signature + RFC3161
+└─ certificates/               # outputs (created at runtime, git-ignored)
 ```
 
-## Prérequis
+## Requirements
 
-- **PowerShell en administrateur** (partie locale). PowerShell **7+** recommandé (horodatage RFC 3161).
-- Pour SharePoint : `Install-Module PnP.PowerShell -Scope CurrentUser`
-- Pour la signature : voir la section **Signature** ci-dessous.
+- **PowerShell as administrator** (local part). PowerShell **7+** recommended (RFC 3161 timestamping).
+- For SharePoint: `Install-Module PnP.PowerShell -Scope CurrentUser`
+- For signing: see the **Signing** section below.
 
-## Signature du certificat (X.509 et/ou GPG)
+## Signing the certificate (X.509 and/or GPG)
 
-Le manifeste JSON (source de vérité) est scellé par une signature détachée. Le backend
-est choisi via `signing.method` dans `config.json` : `"cms"`, `"gpg"` ou `"both"`.
+The JSON manifest (source of truth) is sealed with a detached signature. The backend is
+chosen via `signing.method` in `config.json`: `"cms"`, `"gpg"`, or `"both"`.
 
-**a) X.509 / CMS (`.p7s`)** — pas besoin de cert « machine » : un certificat avec clé
-privée dans `Cert:\CurrentUser\My` suffit. Générez-en un auto-signé (usage interne) :
+**a) X.509 / CMS (`.p7s`)** — no "machine" cert needed: a certificate with a private key in
+`Cert:\CurrentUser\My` is enough. Generate a self-signed one (internal use):
 ```powershell
-.\New-SigningCertificate.ps1 -Type X509          # affiche le thumbprint à coller
+.\New-SigningCertificate.ps1 -Type X509          # prints the thumbprint to paste
 ```
-Puis dans `config.json` : `method:"cms"`, `cms.certThumbprint:"<thumbprint>"`.
-Pour un cert opposable, préférez un certificat émis par la **PKI de l'organisation**, ou un
-`.pfx` (renseignez `cms.pfxPath` ; mot de passe lu depuis la variable d'env nommée dans
-`cms.pfxPasswordEnvVar`, jamais en clair dans la config).
+Then in `config.json`: `method:"cms"`, `cms.certThumbprint:"<thumbprint>"`.
+For a legally defensible cert, prefer one issued by your **organization's PKI**, or a `.pfx`
+(set `cms.pfxPath`; the password is read from the env var named in `cms.pfxPasswordEnvVar`,
+never in clear text in the config).
 
-**b) GPG / OpenPGP (`.asc`)** — recommandé en DFIR, clé entièrement sous votre contrôle.
-Nécessite **Gpg4win**. Repérez/créez votre clé :
+**b) GPG / OpenPGP (`.asc`)** — recommended in DFIR, key fully under your control.
+Requires **Gpg4win**. Find/create your key:
 ```powershell
-.\New-SigningCertificate.ps1 -Type GPG           # liste vos clés secrètes
+.\New-SigningCertificate.ps1 -Type GPG           # lists your secret keys
 ```
-Puis dans `config.json` : `method:"gpg"`, `gpg.keyId:"<email ou fingerprint>"`.
+Then in `config.json`: `method:"gpg"`, `gpg.keyId:"<email or fingerprint>"`.
 
-`method:"both"` produit `.p7s` **et** `.asc`. `Verify-Certificate.ps1` vérifie
-automatiquement les deux (CMS + `gpg --verify`).
+`method:"both"` produces `.p7s` **and** `.asc`. `Verify-Certificate.ps1` checks both
+automatically (CMS + `gpg --verify`).
 
-> Note : un cert/clé **auto-signé** prouve l'intégrité et la cohérence interne, mais pas
-> l'identité auprès d'un tiers. Pour l'opposabilité, combinez avec l'**horodatage RFC 3161**
-> (`signing.timestampUrl`) et un stockage WORM.
+> Note: a **self-signed** cert/key proves integrity and internal consistency, but not your
+> identity to a third party. For legal defensibility, combine it with **RFC 3161 timestamping**
+> (`signing.timestampUrl`) and WORM storage.
 
-## Utilisation
+## Usage
 
 ```powershell
-# 0) Préparer la config
+# 0) Prepare the config
 Copy-Item .\config.example.json .\config.json
-notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires...
+notepad .\config.json   # caseId, paths, SPO site, authorization, signatories...
 
-# 1) REVUE À BLANC (obligatoire d'abord) — calcule les empreintes, ne détruit RIEN
+# 1) DRY RUN (always first) — computes hashes, destroys NOTHING
 .\Invoke-Disposition.ps1 -ConfigPath .\config.json
-#    -> Ouvrez le certificat HTML "MODE PREVIEW", vérifiez l'inventaire.
+#    -> Open the "PREVIEW MODE" HTML certificate and review the inventory.
 
-# 2) DESTRUCTION RÉELLE — demande de taper "DETRUIRE" pour confirmer
+# 2) REAL DESTRUCTION — prompts you to type "DETRUIRE" to confirm
 .\Invoke-Disposition.ps1 -ConfigPath .\config.json -Confirm
 
-# 3) Plus tard : revérifier l'intégrité d'un certificat
+# 3) Later: re-verify a certificate's integrity
 .\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-...manifest.json
 ```
 
-## Garde-fous intégrés
+## Built-in safeguards
 
-- **Preview par défaut** : aucune destruction sans `-Confirm` + saisie du mot `DETRUIRE`.
-- **Blocage si `legalHoldActive = true`** dans la config.
-- **Blocage si aucune autorisation** (`dispositionAuthorizationRef`) n'est renseignée.
-- Empreintes **SHA-256 + MD5** relevées **avant** toute suppression.
-- Vérification post-destruction (`Test-Path` → fichier absent).
+- **Preview by default**: no destruction without `-Confirm` + typing the word `DETRUIRE`.
+- **Aborts if `legalHoldActive = true`** in the config.
+- **Aborts if no authorization** (`dispositionAuthorizationRef`) is provided.
+- **SHA-256 + MD5** hashes captured **before** any deletion.
+- Post-destruction verification (`Test-Path` → file absent).
 
-## Ce que produit chaque exécution (dans `outputDir`)
+## What each run produces (in `outputDir`)
 
-| Fichier | Rôle |
+| File | Purpose |
 |---|---|
-| `COD-<case>-<ts>.manifest.json` | Source de vérité : métadonnées + inventaire + empreintes |
-| `COD-<case>-<ts>.manifest.json.p7s` | Signature numérique **détachée** PKCS#7/CMS du manifeste |
-| `COD-<case>-<ts>.manifest.json.tsr` | Jeton d'horodatage RFC 3161 (si PowerShell 7+) |
-| `COD-<case>-<ts>.certificate.html` | Certificat lisible/imprimable, à contresigner |
+| `COD-<case>-<ts>.manifest.json` | Source of truth: metadata + inventory + hashes |
+| `COD-<case>-<ts>.manifest.json.p7s` | **Detached** PKCS#7/CMS digital signature of the manifest |
+| `COD-<case>-<ts>.manifest.json.asc` | Detached GPG/OpenPGP signature (when `gpg`/`both`) |
+| `COD-<case>-<ts>.manifest.json.tsr` | RFC 3161 timestamp token (PowerShell 7+) |
+| `COD-<case>-<ts>.certificate.html` | Human-readable/printable certificate, to be counter-signed |
 
-Le certificat HTML inclut le **SHA-256 du manifeste** : tout doc imprimé reste rattaché
-cryptographiquement au manifeste signé.
+The HTML certificate embeds the **SHA-256 of the manifest**: any printed copy stays
+cryptographically tied to the signed manifest.
 
-## ⚠ Limites par type de support (à connaître / documenter)
+## ⚠ Limits by media type (know and document them)
 
-- **HDD magnétique** : l'overwrite multi-passes est efficace (NIST *Purge*).
-- **SSD / NVMe / clé USB** : le wear-leveling rend l'overwrite logique **non garanti**.
-  Préférez **ATA Secure Erase** / **NVMe Format**, ou **crypto-erase** (BitLocker :
-  détruire la clé) au niveau du volume. Pour broyage exigé → NIST *Destroy*.
-- **SharePoint Online** : vous ne maîtrisez pas le stockage physique. Le script
-  supprime + **purge les deux niveaux de corbeille**, mais Microsoft conserve des
-  **sauvegardes plateforme (~14 j)**. Pour une éradication contractuelle totale,
-  doublez d'une **demande de suppression formelle à Microsoft**. Cette rémanence
-  résiduelle est volontairement documentée dans le certificat.
+- **Magnetic HDD**: multi-pass overwrite is effective (NIST *Purge*).
+- **SSD / NVMe / USB flash**: wear-leveling makes logical overwrite **not guaranteed**.
+  Prefer **ATA Secure Erase** / **NVMe Format**, or **crypto-erase** (BitLocker: destroy the
+  key) at the volume level. When shredding is required → NIST *Destroy*.
+- **SharePoint Online**: you do not control the physical storage. The script deletes and
+  **empties both recycle-bin stages**, but Microsoft retains **platform backups (~14 days)**.
+  For total contractual eradication, also submit a **formal deletion request to Microsoft**.
+  This residual remanence is deliberately documented in the certificate.
 
-## Après exécution
+## After a run
 
-1. Faire **contresigner** le certificat HTML (examinateur + témoin).
-2. Classer manifeste + signature + certificat dans le dossier d'enquête (WORM/append-only de préférence).
-3. Ajouter la ligne finale de **chain of custody** : `Disposition — <méthode> — réf certificat`.
+1. Have the HTML certificate **counter-signed** (examiner + witness).
+2. File manifest + signature + certificate in the case folder (preferably WORM/append-only).
+3. Add the final **chain-of-custody** line: `Disposition — <method> — certificate ref`.
 
-## Encodage des scripts
+## Script encoding
 
-Les `.ps1`/`.psm1` **doivent** rester en **UTF-8 avec BOM** : sans BOM, Windows PowerShell 5.1
-les lit en ANSI et casse les accents (parsing **et** exécution). `.gitattributes` impose `eol=crlf`
-sur ces fichiers ; le BOM est préservé tel quel par git.
+The `.ps1`/`.psm1` files **must** stay **UTF-8 with BOM**: without a BOM, Windows PowerShell
+5.1 reads them as ANSI and breaks accented characters (both parsing **and** runtime).
+`.gitattributes` enforces `eol=crlf` on these files; the BOM is preserved as-is by git.
 
-## Contribuer
+## Contributing
 
-Voir [CONTRIBUTING.md](CONTRIBUTING.md). Les rapports de vulnérabilité suivent [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerability reports follow [SECURITY.md](SECURITY.md).
 
-## Licence
+## License
 
 [MIT](LICENSE) © 2026 Ahmed Elouahidi.
 
-> Avertissement : logiciel fourni « en l'état », sans garantie. Outil de **destruction de données** —
-> l'utilisateur est seul responsable de son usage conforme (autorisation, rétention, legal hold).
+> Disclaimer: software provided "as is", without warranty. This is a **data-destruction** tool —
+> the user is solely responsible for compliant use (authorization, retention, legal hold).
