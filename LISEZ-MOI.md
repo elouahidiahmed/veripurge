@@ -104,6 +104,7 @@ notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires..
 |---|---|
 | `COD-<case>-<ts>.manifest.json` | Source de vérité : métadonnées + inventaire + empreintes |
 | `COD-<case>-<ts>.manifest.json.p7s` | Signature numérique **détachée** PKCS#7/CMS du manifeste |
+| `COD-<case>-<ts>.manifest.json.asc` | Signature détachée GPG/OpenPGP (méthode `gpg`/`both`) |
 | `COD-<case>-<ts>.manifest.json.tsr` | Jeton d'horodatage RFC 3161 (si PowerShell 7+) |
 | `COD-<case>-<ts>.certificate.html` | Certificat lisible/imprimable, à contresigner |
 
