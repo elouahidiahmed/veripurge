@@ -1,0 +1,34 @@
+# --- Données sensibles : NE JAMAIS committer ---
+# Config réelle (contient chemins d'affaire, site SharePoint, thumbprints, keyId)
+config.json
+config.*.json
+!config.example.json
+
+# Sorties de l'outil : manifestes, certificats, signatures, horodatages
+certificates/
+*.manifest.json
+*.certificate.html
+*.p7s
+*.asc
+*.sig
+*.tsr
+
+# Matériel cryptographique
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Logs / collectes éventuelles
+*.log
+*_CopyLog.csv
+*_SkipLog.csv
+
+# --- OS / éditeurs ---
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

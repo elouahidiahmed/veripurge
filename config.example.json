@@ -1,0 +1,54 @@
+{
+  "caseId": "CASE-2026-0042",
+  "evidenceRef": "SEAL-0042",
+  "investigationClosedOn": "2026-06-23",
+  "dispositionAuthorizationRef": "AUTH-2026-0042 (signed by legal)",
+  "legalHoldActive": false,
+
+  "examiner": { "name": "A. Examiner", "role": "DFIR Analyst", "org": "CSIRT" },
+  "witness":  { "name": "B. Custodian", "role": "Evidence Custodian", "org": "CSIRT" },
+
+  "standard": "NIST SP 800-88 Rev.1 - Purge (overwrite + verify)",
+
+  "local": {
+    "enabled": true,
+    "paths": [
+      "C:\\Investigations\\CASE-2026-0042"
+    ],
+    "passes": 3,
+    "wipeFreeSpace": false
+  },
+
+  "sharepoint": {
+    "enabled": false,
+    "siteUrl": "https://contoso.sharepoint.com/sites/IR",
+    "auth": {
+      "mode": "interactive",
+      "clientId": "",
+      "tenant": "",
+      "thumbprint": ""
+    },
+    "folders": [
+      "Shared Documents/CASE-2026-0042"
+    ],
+    "hashBeforeDelete": true,
+    "purgeRecycleBin": true
+  },
+
+  "signing": {
+    "enabled": false,
+    "method": "gpg",
+    "cms": {
+      "certThumbprint": "",
+      "pfxPath": "",
+      "pfxPasswordEnvVar": "DFIR_PFX_PWD"
+    },
+    "gpg": {
+      "keyId": "",
+      "armor": true
+    },
+    "timestampUrl": "http://timestamp.digicert.com"
+  },
+
+  "outputDir": "C:\\projects\\claude\\dfir-disposer\\certificates"
+}

@@ -1,0 +1,17 @@
+# Normalisation par défaut
+* text=auto
+
+# Scripts PowerShell : CRLF + UTF-8 BOM requis pour Windows PowerShell 5.1.
+# (git ne touche pas au BOM ; on impose seulement les fins de ligne CRLF.)
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# Documents
+*.md   text eol=lf
+*.json text eol=lf
+
+# Binaire (au cas où des exemples seraient ajoutés)
+*.png  binary
+*.pdf  binary
+*.pfx  binary
