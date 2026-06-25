@@ -124,6 +124,18 @@ Relancez la **même commande** pour reprendre :
 Quand un run se termine **sans échec**, le journal est archivé à côté du certificat
 (`<certId>.journal.jsonl`). S'il reste des échecs, le journal est **conservé** pour la relance.
 
+**Consolider un run antérieur (sans journal).** Si un run a été fait avant l'ajout du journal
+(ou que vous voulez un seul certificat après correction d'échecs), amorcez un journal depuis
+le manifeste précédent, puis relancez la même commande de destruction :
+
+```powershell
+.\Import-ManifestToJournal.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json
+.\Invoke-Disposition.ps1 -ConfigPath .\config.json -Confirm
+```
+
+Les fichiers déjà détruits sont ignorés, les `FAILED` réessayés, et vous obtenez **un seul
+certificat consolidé** couvrant l'ensemble.
+
 ## Ce que produit chaque exécution (dans `outputDir`)
 
 | Fichier | Rôle |

@@ -123,6 +123,18 @@ When a run finishes with **no failures**, the journal is archived next to the ce
 (`<certId>.journal.jsonl`). If some files failed, the journal is **kept** so the next run
 retries them.
 
+**Consolidating a pre-journal run.** If a run was made before the journal existed (or you
+just want a single certificate after fixing failures), seed a journal from the previous
+manifest, then re-run the same destroy command:
+
+```powershell
+.\Import-ManifestToJournal.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json
+.\Invoke-Disposition.ps1 -ConfigPath .\config.json -Confirm
+```
+
+The already-destroyed files are skipped, the failed ones retried, and you get **one
+consolidated certificate** covering everything.
+
 ## What each run produces (in `outputDir`)
 
 | File | Purpose |
