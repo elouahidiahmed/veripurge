@@ -102,6 +102,26 @@ remaining (ETA)** — so large jobs report live progress.
 - Post-destruction verification (file confirmed absent).
 - **Long-path safe**: paths over 260 chars (deep folders, UUID names) are handled via
   `\\?\` extended paths and .NET I/O — no "file not found" on existing files.
+- **outputDir guard**: aborts if `outputDir` sits inside a target path (would destroy the
+  certificate/journal).
+
+## Resume after interruption
+
+Every processed file is appended to a crash-safe **journal**
+(`<outputDir>/<caseId>.<mode>.journal.jsonl`) *immediately*, before moving on — so if the run
+is interrupted (Ctrl+C, kill, power loss) the journal already holds what was done, including
+the **hashes of files already destroyed** (which can no longer be recomputed).
+
+Re-run the **same command** to resume:
+
+- files already destroyed are **skipped**;
+- files that **failed** (e.g. locked / in use) are **retried**;
+- the final manifest is rebuilt from the journal, covering files destroyed during the
+  interrupted run too.
+
+When a run finishes with **no failures**, the journal is archived next to the certificate
+(`<certId>.journal.jsonl`). If some files failed, the journal is **kept** so the next run
+retries them.
 
 ## What each run produces (in `outputDir`)
 

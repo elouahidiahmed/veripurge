@@ -4,10 +4,11 @@ config.json
 config.*.json
 !config.example.json
 
-# Sorties de l'outil : manifestes, certificats, signatures, horodatages
+# Sorties de l'outil : manifestes, certificats, signatures, horodatages, journaux
 certificates/
 *.manifest.json
 *.certificate.html
+*.journal.jsonl
 *.p7s
 *.asc
 *.sig

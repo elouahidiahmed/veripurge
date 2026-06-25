@@ -17,6 +17,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'Journal.psm1') -Force
+
 function Connect-DisposerSharePoint {
     [CmdletBinding()]
     param(
@@ -67,10 +69,28 @@ function Invoke-SharePointSanitization {
         [Parameter(Mandatory)][string[]]$Folders,        # site-relative, ex: "Shared Documents/CASE-..."
         [ValidateSet('Preview','Destroy')][string]$Mode = 'Preview',
         [bool]$HashBeforeDelete = $true,
-        [bool]$PurgeRecycleBin  = $true
+        [bool]$PurgeRecycleBin  = $true,
+        [string]$JournalPath
     )
 
     $results = New-Object System.Collections.Generic.List[object]
+
+    # --- Reprise : recharger le journal existant (entrées SHAREPOINT uniquement) ---
+    $priorByPath   = [ordered]@{}
+    $doneSet       = New-Object 'System.Collections.Generic.HashSet[string]'
+    $successStatus = if ($Mode -eq 'Destroy') { 'DELETED' } else { 'PREVIEW' }
+    if ($JournalPath) {
+        foreach ($rec in (Read-DispositionJournal -JournalPath $JournalPath)) {
+            if ($rec.Source -ne 'SHAREPOINT') { continue }
+            $priorByPath[$rec.Path] = $rec
+        }
+        foreach ($rec in $priorByPath.Values) {
+            if ($rec.Status -eq $successStatus) { [void]$doneSet.Add($rec.Path) }
+        }
+        if ($doneSet.Count -gt 0) {
+            Write-Host ("[SPO] Reprise : {0} fichier(s) déjà traité(s), ignoré(s)." -f $doneSet.Count) -ForegroundColor DarkCyan
+        }
+    }
 
     foreach ($folder in $Folders) {
         $items    = @(Get-PnPFolderItem -FolderSiteRelativeUrl $folder -ItemType File -Recursive -ErrorAction Stop)
@@ -94,6 +114,9 @@ function Invoke-SharePointSanitization {
             }
 
             $srv  = $it.ServerRelativeUrl
+            # Reprise : déjà supprimé lors d'un run précédent -> on saute.
+            if ($doneSet.Contains($srv)) { continue }
+
             $sha  = $null; $md5 = $null; $size = $it.Length
             $status = 'PREVIEW'; $err = $null
 
@@ -113,7 +136,7 @@ function Invoke-SharePointSanitization {
 
             if ($size) { $sbytes += [int64]$size }
 
-            $results.Add([pscustomobject]@{
+            $rec = [pscustomobject]@{
                 Source          = 'SHAREPOINT'
                 Path            = $srv
                 SizeBytes       = $size
@@ -126,7 +149,9 @@ function Invoke-SharePointSanitization {
                 VerifiedDeleted = $(if ($Mode -eq 'Destroy') { $status -eq 'DELETED' } else { $null })
                 Error           = $err
                 ProcessedUtc    = (Get-Date).ToUniversalTime().ToString('o')
-            })
+            }
+            if ($JournalPath) { Add-JournalEntry -JournalPath $JournalPath -Entry $rec }
+            $results.Add($rec)
         }
         Write-Progress -Id 2 -Activity 'Sanitization SharePoint' -Completed
     }
@@ -148,6 +173,13 @@ function Invoke-SharePointSanitization {
         }
     }
 
+    # Avec reprise : fusionner l'historique (prior) + ce run (dernier état par chemin).
+    if ($JournalPath) {
+        $final = [ordered]@{}
+        foreach ($r in $priorByPath.Values) { $final[$r.Path] = $r }
+        foreach ($r in $results)            { $final[$r.Path] = $r }
+        return @($final.Values)
+    }
     return $results
 }
 

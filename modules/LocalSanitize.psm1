@@ -17,6 +17,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'Journal.psm1') -Force
+
 function ConvertTo-ExtendedPath {
     <# Convertit en chemin absolu préfixé \\?\ (supporte ~32767 caractères). #>
     [CmdletBinding()]
@@ -138,10 +140,28 @@ function Invoke-LocalSanitization {
         [Parameter(Mandatory)][string[]]$Paths,
         [int]$Passes = 3,
         [ValidateSet('Preview','Destroy')][string]$Mode = 'Preview',
-        [switch]$WipeFreeSpace
+        [switch]$WipeFreeSpace,
+        [string]$JournalPath
     )
 
     $results = New-Object System.Collections.Generic.List[object]
+
+    # --- Reprise : recharger le journal existant (entrées LOCAL uniquement) ---
+    $priorByPath   = [ordered]@{}
+    $doneSet       = New-Object 'System.Collections.Generic.HashSet[string]'
+    $successStatus = if ($Mode -eq 'Destroy') { 'DESTROYED' } else { 'PREVIEW' }
+    if ($JournalPath) {
+        foreach ($rec in (Read-DispositionJournal -JournalPath $JournalPath)) {
+            if ($rec.Source -ne 'LOCAL') { continue }
+            $priorByPath[$rec.Path] = $rec               # dernier état gagne
+        }
+        foreach ($rec in $priorByPath.Values) {
+            if ($rec.Status -eq $successStatus) { [void]$doneSet.Add($rec.Path) }
+        }
+        if ($doneSet.Count -gt 0) {
+            Write-Host ("[LOCAL] Reprise : {0} fichier(s) déjà traité(s), ignoré(s)." -f $doneSet.Count) -ForegroundColor DarkCyan
+        }
+    }
 
     foreach ($root in $Paths) {
         $extRoot = ConvertTo-ExtendedPath $root
@@ -175,6 +195,9 @@ function Invoke-LocalSanitization {
                 $lastPct = $pct
             }
 
+            # Reprise : déjà traité avec succès lors d'un run précédent -> on saute.
+            if ($doneSet.Contains((ConvertFrom-ExtendedPath $extFile))) { continue }
+
             $entry    = $null
             $status   = 'PREVIEW'
             $verified = $null
@@ -186,13 +209,15 @@ function Invoke-LocalSanitization {
             catch {
                 # On journalise quand même l'échec de lecture pour traçabilité.
                 Write-Warning ("Lecture impossible {0} : {1}" -f (ConvertFrom-ExtendedPath $extFile), $_.Exception.Message)
-                $results.Add([pscustomobject]@{
+                $rec = [pscustomobject]@{
                     Source='LOCAL'; Path=(ConvertFrom-ExtendedPath $extFile); SizeBytes=$null
                     SHA256=$null; MD5=$null; CreatedUtc=$null; ModifiedUtc=$null
                     Method="Overwrite x$Passes (random+zero), rename, delete"
                     Status='READ_ERROR'; VerifiedDeleted=$null; Error=$_.Exception.Message
                     ProcessedUtc=(Get-Date).ToUniversalTime().ToString('o')
-                })
+                }
+                if ($JournalPath) { Add-JournalEntry -JournalPath $JournalPath -Entry $rec }
+                $results.Add($rec)
                 continue
             }
 
@@ -211,7 +236,7 @@ function Invoke-LocalSanitization {
                 }
             }
 
-            $results.Add([pscustomobject]@{
+            $rec = [pscustomobject]@{
                 Source           = 'LOCAL'
                 Path             = $entry.Path
                 SizeBytes        = $entry.SizeBytes
@@ -224,7 +249,9 @@ function Invoke-LocalSanitization {
                 VerifiedDeleted  = $verified
                 Error            = $err
                 ProcessedUtc     = (Get-Date).ToUniversalTime().ToString('o')
-            })
+            }
+            if ($JournalPath) { Add-JournalEntry -JournalPath $JournalPath -Entry $rec }
+            $results.Add($rec)
         }
         Write-Progress -Id 1 -Activity 'Sanitization locale' -Completed
 
@@ -236,6 +263,13 @@ function Invoke-LocalSanitization {
         }
     }
 
+    # Avec reprise : fusionner l'historique (prior) + ce run (dernier état par chemin).
+    if ($JournalPath) {
+        $final = [ordered]@{}
+        foreach ($r in $priorByPath.Values) { $final[$r.Path] = $r }
+        foreach ($r in $results)            { $final[$r.Path] = $r }
+        return @($final.Values)
+    }
     return $results
 }
 

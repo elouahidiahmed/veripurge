@@ -104,6 +104,25 @@ estimé (ETA)** — pour suivre l'avancement sur gros volumes.
 - **Compatible longs chemins** : les chemins > 260 caractères (dossiers profonds, noms à
   UUID) sont gérés via les chemins étendus `\\?\` et .NET I/O — plus de « fichier introuvable »
   sur des fichiers existants.
+- **Garde-fou outputDir** : arrêt si `outputDir` est à l'intérieur d'une cible (sinon le
+  certificat/journal seraient détruits).
+
+## Reprise après interruption
+
+Chaque fichier traité est ajouté *immédiatement* à un **journal** résistant aux crashs
+(`<outputDir>/<caseId>.<mode>.journal.jsonl`), avant de passer au suivant — donc si le run est
+interrompu (Ctrl+C, kill, coupure), le journal contient déjà ce qui a été fait, y compris les
+**empreintes des fichiers déjà détruits** (qu'on ne peut plus recalculer).
+
+Relancez la **même commande** pour reprendre :
+
+- les fichiers déjà détruits sont **ignorés** ;
+- les fichiers en **échec** (verrouillés / en cours d'utilisation) sont **réessayés** ;
+- le manifeste final est reconstruit depuis le journal, couvrant aussi les fichiers détruits
+  pendant le run interrompu.
+
+Quand un run se termine **sans échec**, le journal est archivé à côté du certificat
+(`<certId>.journal.jsonl`). S'il reste des échecs, le journal est **conservé** pour la relance.
 
 ## Ce que produit chaque exécution (dans `outputDir`)
 
