@@ -95,7 +95,9 @@ notepad .\config.json   # caseId, paths, SPO site, authorization, signatories...
 - **Aborts if `legalHoldActive = true`** in the config.
 - **Aborts if no authorization** (`dispositionAuthorizationRef`) is provided.
 - **SHA-256 + MD5** hashes captured **before** any deletion.
-- Post-destruction verification (`Test-Path` → file absent).
+- Post-destruction verification (file confirmed absent).
+- **Long-path safe**: paths over 260 chars (deep folders, UUID names) are handled via
+  `\\?\` extended paths and .NET I/O — no "file not found" on existing files.
 
 ## What each run produces (in `outputDir`)
 

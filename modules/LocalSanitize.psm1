@@ -8,20 +8,75 @@
     Sur SSD / NVMe / clé USB, le wear-leveling rend l'overwrite NON garanti :
     privilégier ATA Secure Erase / NVMe Format, ou crypto-erase (BitLocker) au
     niveau du volume. Voir README -> "Limites par type de support".
+
+    LONGS CHEMINS (> 260 caractères) : sous-dossiers profonds / noms à UUID dépassent
+    MAX_PATH et font échouer les cmdlets provider ("fichier introuvable" sur des
+    fichiers existants). Ce module préfixe donc tous les chemins en forme étendue
+    \\?\ (ou \\?\UNC\ pour les partages) et utilise .NET I/O directement.
 #>
 
 Set-StrictMode -Version Latest
+
+function ConvertTo-ExtendedPath {
+    <# Convertit en chemin absolu préfixé \\?\ (supporte ~32767 caractères). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    if ([string]::IsNullOrEmpty($Path)) { return $Path }
+    if ($Path.StartsWith('\\?\'))       { return $Path }   # déjà étendu
+
+    $full = [System.IO.Path]::GetFullPath($Path)           # normalise (slashs, relatif, .)
+    if ($full.StartsWith('\\')) { return '\\?\UNC\' + $full.Substring(2) }  # UNC \\srv\share
+    return '\\?\' + $full
+}
+
+function ConvertFrom-ExtendedPath {
+    <# Retire le préfixe \\?\ pour un affichage lisible dans le manifeste. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    if ($Path -like '\\?\UNC\*') { return '\\' + $Path.Substring(8) }
+    if ($Path -like '\\?\*')     { return $Path.Substring(4) }
+    return $Path
+}
+
+function Get-LongPathFile {
+    <# Énumération récursive long-path-safe, tolérante aux dossiers inaccessibles. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ExtRoot)
+
+    $results = New-Object System.Collections.Generic.List[string]
+    $stack   = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($ExtRoot)
+
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        try { foreach ($f in [System.IO.Directory]::EnumerateFiles($dir))       { $results.Add($f) } }
+        catch { Write-Warning ("Fichiers illisibles dans {0} : {1}" -f (ConvertFrom-ExtendedPath $dir), $_.Exception.Message) }
+        try { foreach ($d in [System.IO.Directory]::EnumerateDirectories($dir)) { $stack.Push($d) } }
+        catch { Write-Warning ("Sous-dossiers illisibles dans {0} : {1}" -f (ConvertFrom-ExtendedPath $dir), $_.Exception.Message) }
+    }
+    return $results
+}
 
 function Get-FileManifestEntry {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
-    $fi  = Get-Item -LiteralPath $Path -Force
-    $sha = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
-    $md5 = (Get-FileHash -LiteralPath $Path -Algorithm MD5).Hash
+    $ext = ConvertTo-ExtendedPath $Path
+    $fi  = New-Object System.IO.FileInfo($ext)
+
+    # Hash via flux (évite tout passage de long chemin à Get-FileHash -LiteralPath).
+    $fs = [System.IO.File]::Open($ext, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        $sha = (Get-FileHash -InputStream $fs -Algorithm SHA256).Hash
+        $fs.Position = 0
+        $md5 = (Get-FileHash -InputStream $fs -Algorithm MD5).Hash
+    }
+    finally { $fs.Dispose() }
 
     [pscustomobject]@{
-        Path        = $fi.FullName
+        Path        = ConvertFrom-ExtendedPath $fi.FullName
         SizeBytes   = $fi.Length
         SHA256      = $sha
         MD5         = $md5
@@ -38,12 +93,13 @@ function Invoke-SecureOverwrite {
         [int]$Passes = 3
     )
 
-    $fi = Get-Item -LiteralPath $Path -Force
+    $ext = ConvertTo-ExtendedPath $Path
+    $fi  = New-Object System.IO.FileInfo($ext)
     if ($fi.IsReadOnly) { $fi.IsReadOnly = $false }
 
     $len = $fi.Length
     if ($len -gt 0) {
-        $fs = [System.IO.File]::Open($fi.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write)
+        $fs = [System.IO.File]::Open($ext, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write)
         try {
             $rng     = [System.Security.Cryptography.RandomNumberGenerator]::Create()
             $bufSize = 1MB
@@ -66,10 +122,10 @@ function Invoke-SecureOverwrite {
     }
 
     # Casser le nom de fichier (anti-forensique sur les métadonnées MFT) puis supprimer.
-    $rand    = [System.IO.Path]::GetRandomFileName()
-    $newPath = Join-Path $fi.DirectoryName $rand
-    Rename-Item -LiteralPath $fi.FullName -NewName $rand -Force
-    Remove-Item -LiteralPath $newPath -Force
+    $dir    = [System.IO.Path]::GetDirectoryName($ext)
+    $newExt = [System.IO.Path]::Combine($dir, [System.IO.Path]::GetRandomFileName())
+    [System.IO.File]::Move($ext, $newExt)
+    [System.IO.File]::Delete($newExt)
 }
 
 function Invoke-LocalSanitization {
@@ -88,30 +144,52 @@ function Invoke-LocalSanitization {
     $results = New-Object System.Collections.Generic.List[object]
 
     foreach ($root in $Paths) {
-        if (-not (Test-Path -LiteralPath $root)) {
+        $extRoot = ConvertTo-ExtendedPath $root
+        if (-not [System.IO.Directory]::Exists($extRoot) -and -not [System.IO.File]::Exists($extRoot)) {
             Write-Warning "Chemin introuvable, ignoré : $root"
             continue
         }
 
-        $files = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue)
+        # Fichier unique ou répertoire ?
+        if ([System.IO.File]::Exists($extRoot)) {
+            $files = @($extRoot)
+        } else {
+            $files = @(Get-LongPathFile -ExtRoot $extRoot)
+        }
         Write-Host ("[LOCAL] {0} : {1} fichier(s)" -f $root, $files.Count) -ForegroundColor Cyan
 
-        foreach ($f in $files) {
-            $entry = Get-FileManifestEntry -Path $f.FullName
-            $status = 'PREVIEW'
+        foreach ($extFile in $files) {
+            $entry    = $null
+            $status   = 'PREVIEW'
             $verified = $null
-            $err = $null
+            $err      = $null
+
+            try {
+                $entry = Get-FileManifestEntry -Path $extFile
+            }
+            catch {
+                # On journalise quand même l'échec de lecture pour traçabilité.
+                Write-Warning ("Lecture impossible {0} : {1}" -f (ConvertFrom-ExtendedPath $extFile), $_.Exception.Message)
+                $results.Add([pscustomobject]@{
+                    Source='LOCAL'; Path=(ConvertFrom-ExtendedPath $extFile); SizeBytes=$null
+                    SHA256=$null; MD5=$null; CreatedUtc=$null; ModifiedUtc=$null
+                    Method="Overwrite x$Passes (random+zero), rename, delete"
+                    Status='READ_ERROR'; VerifiedDeleted=$null; Error=$_.Exception.Message
+                    ProcessedUtc=(Get-Date).ToUniversalTime().ToString('o')
+                })
+                continue
+            }
 
             if ($Mode -eq 'Destroy') {
                 try {
-                    Invoke-SecureOverwrite -Path $f.FullName -Passes $Passes
-                    $verified = -not (Test-Path -LiteralPath $f.FullName)
+                    Invoke-SecureOverwrite -Path $extFile -Passes $Passes
+                    $verified = -not [System.IO.File]::Exists($extFile)
                     $status   = if ($verified) { 'DESTROYED' } else { 'FAILED' }
                 }
                 catch {
                     $status = 'FAILED'
                     $err    = $_.Exception.Message
-                    Write-Warning ("Echec destruction {0} : {1}" -f $f.FullName, $err)
+                    Write-Warning ("Echec destruction {0} : {1}" -f $entry.Path, $err)
                 }
             }
 
@@ -133,7 +211,7 @@ function Invoke-LocalSanitization {
 
         # Wipe de l'espace libre du volume (efface les rémanences post-suppression).
         if ($Mode -eq 'Destroy' -and $WipeFreeSpace) {
-            $drive = (Get-Item -LiteralPath $root).PSDrive.Name + ':\'
+            $drive = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($root))
             Write-Host "[LOCAL] cipher /w sur $drive (peut être long)..." -ForegroundColor Yellow
             & cipher.exe "/w:$drive" | Out-Null
         }
@@ -142,4 +220,4 @@ function Invoke-LocalSanitization {
     return $results
 }
 
-Export-ModuleMember -Function Get-FileManifestEntry, Invoke-SecureOverwrite, Invoke-LocalSanitization
+Export-ModuleMember -Function Get-FileManifestEntry, Invoke-SecureOverwrite, Invoke-LocalSanitization, ConvertTo-ExtendedPath, ConvertFrom-ExtendedPath

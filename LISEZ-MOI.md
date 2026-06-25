@@ -96,7 +96,10 @@ notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires..
 - **Blocage si `legalHoldActive = true`** dans la config.
 - **Blocage si aucune autorisation** (`dispositionAuthorizationRef`) n'est renseignée.
 - Empreintes **SHA-256 + MD5** relevées **avant** toute suppression.
-- Vérification post-destruction (`Test-Path` → fichier absent).
+- Vérification post-destruction (fichier confirmé absent).
+- **Compatible longs chemins** : les chemins > 260 caractères (dossiers profonds, noms à
+  UUID) sont gérés via les chemins étendus `\\?\` et .NET I/O — plus de « fichier introuvable »
+  sur des fichiers existants.
 
 ## Ce que produit chaque exécution (dans `outputDir`)
 
