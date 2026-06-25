@@ -218,6 +218,7 @@ function New-DispositionCertificate {
  .seal{margin-top:24px;background:#f7f7f7;border:1px dashed #888;padding:12px;font-family:Consolas,monospace;font-size:11px;word-break:break-all}
  .sig{margin-top:32px;display:flex;gap:48px}
  .sig div{flex:1;border-top:1px solid #000;padding-top:6px;font-size:12px}
+ .inv{page-break-before:always}
 </style></head><body>
 <h1>CERTIFICATE OF DESTRUCTION - @@CERTID@@</h1>
 @@MODEBANNER@@
@@ -235,17 +236,11 @@ function New-DispositionCertificate {
  <tr><td>Bilan</td><td>@@TOTAL@@ element(s) - detruits : @@DESTROYED@@ - echecs : @@FAILED@@</td></tr>
 </table>
 
-<h2>Inventaire des preuves traitees (empreintes relevees AVANT destruction)</h2>
-<table>
- <tr><th>Source</th><th>Chemin</th><th>Octets</th><th>SHA-256</th><th>Methode</th><th>Statut</th></tr>
- @@ROWS@@
-</table>
-
 <div class="seal">
  SCEAU D'INTEGRITE<br>
  Manifeste JSON : @@CERTID@@.manifest.json<br>
  SHA-256 du manifeste : @@MANIFESTHASH@@<br>
- La preuve de "ce qui" a ete detruit repose sur les empreintes ci-dessus ;
+ La preuve de "ce qui" a ete detruit repose sur l'inventaire en fin de document ;
  la preuve "que" cela a ete detruit repose sur ce certificat signe/horodate.
 </div>
 
@@ -253,6 +248,12 @@ function New-DispositionCertificate {
  <div>Examinateur - signature &amp; date<br><br>@@EXAMINERNAME@@</div>
  <div>Temoin - signature &amp; date<br><br>@@WITNESSNAME@@</div>
 </div>
+
+<h2 class="inv">Inventaire des preuves traitees (@@TOTAL@@ element(s), empreintes relevees AVANT destruction)</h2>
+<table>
+ <tr><th>Source</th><th>Chemin</th><th>Octets</th><th>SHA-256</th><th>Methode</th><th>Statut</th></tr>
+ @@ROWS@@
+</table>
 </body></html>
 '@
 
