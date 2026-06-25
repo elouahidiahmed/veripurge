@@ -89,6 +89,9 @@ notepad .\config.json   # caseId, paths, SPO site, authorization, signatories...
 .\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-...manifest.json
 ```
 
+A **progress bar** (percentage + processed/total file count + current file) is shown during
+both local and SharePoint processing, so large jobs report live progress.
+
 ## Built-in safeguards
 
 - **Preview by default**: no destruction without `-Confirm` + typing the word `DETRUIRE`.

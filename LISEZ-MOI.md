@@ -90,6 +90,9 @@ notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires..
 .\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-...manifest.json
 ```
 
+Une **barre de progression** (pourcentage + compteur traités/total + fichier courant)
+s'affiche pendant le traitement local et SharePoint, pour suivre l'avancement sur gros volumes.
+
 ## Garde-fous intégrés
 
 - **Preview par défaut** : aucune destruction sans `-Confirm` + saisie du mot `DETRUIRE`.

@@ -73,10 +73,22 @@ function Invoke-SharePointSanitization {
     $results = New-Object System.Collections.Generic.List[object]
 
     foreach ($folder in $Folders) {
-        $items = Get-PnPFolderItem -FolderSiteRelativeUrl $folder -ItemType File -Recursive -ErrorAction Stop
-        Write-Host ("[SPO] {0} : {1} fichier(s)" -f $folder, @($items).Count) -ForegroundColor Cyan
+        $items    = @(Get-PnPFolderItem -FolderSiteRelativeUrl $folder -ItemType File -Recursive -ErrorAction Stop)
+        $spoTotal = $items.Count
+        Write-Host ("[SPO] {0} : {1} fichier(s)" -f $folder, $spoTotal) -ForegroundColor Cyan
 
+        $sidx = 0; $sLastPct = -1
         foreach ($it in $items) {
+            $sidx++
+            # Barre de progression (le hachage télécharge chaque fichier : utile sur gros volumes).
+            $spct = if ($spoTotal -gt 0) { [int](($sidx / $spoTotal) * 100) } else { 100 }
+            if ($spct -ne $sLastPct) {
+                Write-Progress -Id 2 -Activity ("Sanitization SharePoint [{0}]" -f $Mode) `
+                    -Status ("{0}/{1} fichiers ({2}%)" -f $sidx, $spoTotal, $spct) `
+                    -CurrentOperation $it.ServerRelativeUrl -PercentComplete $spct
+                $sLastPct = $spct
+            }
+
             $srv  = $it.ServerRelativeUrl
             $sha  = $null; $md5 = $null; $size = $it.Length
             $status = 'PREVIEW'; $err = $null
@@ -110,6 +122,7 @@ function Invoke-SharePointSanitization {
                 ProcessedUtc    = (Get-Date).ToUniversalTime().ToString('o')
             })
         }
+        Write-Progress -Id 2 -Activity 'Sanitization SharePoint' -Completed
     }
 
     # Purge des deux niveaux de corbeille pour les éléments supprimés.

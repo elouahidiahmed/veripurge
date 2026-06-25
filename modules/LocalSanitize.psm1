@@ -158,7 +158,18 @@ function Invoke-LocalSanitization {
         }
         Write-Host ("[LOCAL] {0} : {1} fichier(s)" -f $root, $files.Count) -ForegroundColor Cyan
 
+        $total = $files.Count; $idx = 0; $lastPct = -1
         foreach ($extFile in $files) {
+            $idx++
+            # Barre de progression (throttle : redessine seulement quand le % entier change).
+            $pct = if ($total -gt 0) { [int](($idx / $total) * 100) } else { 100 }
+            if ($pct -ne $lastPct) {
+                Write-Progress -Id 1 -Activity ("Sanitization locale [{0}]" -f $Mode) `
+                    -Status ("{0}/{1} fichiers ({2}%)" -f $idx, $total, $pct) `
+                    -CurrentOperation (ConvertFrom-ExtendedPath $extFile) -PercentComplete $pct
+                $lastPct = $pct
+            }
+
             $entry    = $null
             $status   = 'PREVIEW'
             $verified = $null
@@ -208,6 +219,7 @@ function Invoke-LocalSanitization {
                 ProcessedUtc     = (Get-Date).ToUniversalTime().ToString('o')
             })
         }
+        Write-Progress -Id 1 -Activity 'Sanitization locale' -Completed
 
         # Wipe de l'espace libre du volume (efface les rémanences post-suppression).
         if ($Mode -eq 'Destroy' -and $WipeFreeSpace) {
