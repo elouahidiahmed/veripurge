@@ -99,19 +99,20 @@ function Invoke-SecureOverwrite {
     $fi  = New-Object System.IO.FileInfo($ext)
     if ($fi.IsReadOnly) { $fi.IsReadOnly = $false }
 
-    $len = $fi.Length
+    $len = [int64]$fi.Length
     if ($len -gt 0) {
         $fs = [System.IO.File]::Open($ext, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write)
         try {
             $rng     = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-            $bufSize = 1MB
+            $bufSize = [int64]1MB
             $buf     = New-Object byte[] $bufSize
 
             for ($p = 1; $p -le $Passes; $p++) {
                 $fs.Position = 0
-                $remaining   = $len
+                $remaining   = [int64]$len
                 while ($remaining -gt 0) {
-                    $chunk = [Math]::Min($bufSize, $remaining)
+                    # Int64 obligatoire : les fichiers > 2 Go débordent un Int32.
+                    $chunk = [int][Math]::Min($bufSize, $remaining)
                     if ($p -eq $Passes) { [Array]::Clear($buf, 0, $chunk) }  # passe finale = zéros
                     else                { $rng.GetBytes($buf) }
                     $fs.Write($buf, 0, $chunk)
