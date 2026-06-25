@@ -41,6 +41,7 @@ if (-not $m.items) { throw "Le manifeste ne contient aucune entrée 'items'." }
 if (-not $JournalPath) {
     $caseId = $m.case.caseId
     $mode   = ([string]$m.mode).ToLower()
+    if ([string]::IsNullOrWhiteSpace($mode)) { $mode = 'destroy' }  # repli (manifeste ancien)
     $dir    = Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath)
     $JournalPath = Join-Path $dir ("{0}.{1}.journal.jsonl" -f $caseId, $mode)
 }
