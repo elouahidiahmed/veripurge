@@ -63,7 +63,12 @@ Nécessite **Gpg4win**. Repérez/créez votre clé :
 ```powershell
 .\New-SigningCertificate.ps1 -Type GPG           # liste vos clés secrètes
 ```
-Puis dans `config.json` : `method:"gpg"`, `gpg.keyId:"<email ou fingerprint>"`.
+Puis dans `config.json` : `method:"gpg"`, `gpg.keyId:"<email ou fingerprint>"`. Laissez
+`gpg.keyId` **vide** pour sélectionner automatiquement votre 1re clé secrète — son identité et
+son empreinte sont alors inscrites dans le certificat.
+
+Le sceau d'intégrité du certificat liste le ou les **signataires cryptographiques** (type,
+identité, empreinte) : la traçabilité est visible directement dans le certificat imprimable.
 
 `method:"both"` produit `.p7s` **et** `.asc`. `Verify-Certificate.ps1` vérifie
 automatiquement les deux (CMS + `gpg --verify`).

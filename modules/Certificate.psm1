@@ -52,7 +52,8 @@ function Add-CmsSignature {
 }
 
 function Add-GpgSignature {
-    <# Signature GPG/OpenPGP détachée (.asc en ASCII-armor, sinon .sig binaire). #>
+    <# Signature GPG/OpenPGP détachée (.asc en ASCII-armor, sinon .sig binaire).
+       Si -KeyId est vide, sélectionne et reporte la 1re clé secrète disponible. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FilePath,
@@ -63,13 +64,26 @@ function Add-GpgSignature {
     $gpg = Get-Command gpg -ErrorAction SilentlyContinue
     if (-not $gpg) { throw "gpg introuvable dans le PATH (installez Gpg4win, puis rouvrez la session)." }
 
+    # --- Résolution de la clé : KeyId vide -> 1re clé secrète (empreinte + identité) ---
+    $signerUid = $KeyId
+    if (-not $KeyId) {
+        foreach ($l in (& $gpg.Source --list-secret-keys --with-colons 2>$null)) {
+            $p = $l -split ':'
+            if (-not $KeyId     -and $p[0] -eq 'fpr') { $KeyId = $p[9] }       # empreinte primaire
+            if (-not $signerUid -and $p[0] -eq 'uid') { $signerUid = $p[9] }   # "Nom <email>"
+        }
+        if (-not $KeyId) { throw "Aucune clé secrète GPG. Créez-en une : gpg --full-generate-key" }
+        if (-not $signerUid) { $signerUid = $KeyId }
+        Write-Host ("[SIGN] Clé GPG par défaut : {0} ({1})" -f $signerUid, $KeyId) -ForegroundColor DarkCyan
+    }
+
     $ext     = if ($Armor) { 'asc' } else { 'sig' }
     $sigPath = "$FilePath.$ext"
     if (Test-Path $sigPath) { Remove-Item -LiteralPath $sigPath -Force }
 
-    $gpgArgs = @('--batch','--yes','--detach-sign')
-    if ($Armor)  { $gpgArgs += '--armor' }
-    if ($KeyId)  { $gpgArgs += @('--local-user', $KeyId) }
+    # --local-user toujours fourni : la clé utilisée == la clé reportée (déterministe).
+    $gpgArgs = @('--batch','--yes','--detach-sign','--local-user', $KeyId)
+    if ($Armor) { $gpgArgs += '--armor' }
     $gpgArgs += @('--output', $sigPath, $FilePath)
 
     & $gpg.Source @gpgArgs
@@ -77,19 +91,20 @@ function Add-GpgSignature {
         throw "gpg a échoué (exit $LASTEXITCODE). Vérifiez que la clé secrète '$KeyId' existe."
     }
 
-    # Empreinte de la clé signataire (pour traçabilité dans le certificat)
+    # Empreinte complète de la clé signataire (traçabilité dans le certificat)
     $fpr = $null
     try {
         $out = & $gpg.Source --list-keys --with-colons $KeyId 2>$null
         $fprLine = ($out | Select-String '^fpr:') | Select-Object -First 1
         if ($fprLine) { $fpr = ($fprLine.ToString() -split ':')[9] }
     } catch {}
+    if (-not $fpr) { $fpr = $KeyId }
 
     Write-Host "[SIGN] Signature GPG écrite : $sigPath" -ForegroundColor Green
     return [pscustomobject]@{
         Type          = 'GPG'
         SignaturePath = $sigPath
-        Signer        = $KeyId
+        Signer        = $signerUid
         Thumbprint    = $fpr
         NotAfter      = $null
     }
@@ -177,12 +192,59 @@ function New-DispositionCertificate {
     ($record | ConvertTo-Json -Depth 12) | Set-Content -Path $jsonPath -Encoding UTF8
     $manifestHash = (Get-FileHash -LiteralPath $jsonPath -Algorithm SHA256).Hash
 
-    # --- Certificat HTML lisible ---
+    # --- Échappement HTML ---
     $enc = {
         param($s)
         if ($null -eq $s) { return '' }
         ([string]$s).Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;')
     }
+
+    # --- Scellement cryptographique du MANIFESTE (AVANT le HTML, pour l'y inclure) ---
+    $signatures = @(); $tsPath = $null
+    if ($Signing -and $Signing.enabled) {
+        $method = ([string]$Signing.method).ToLower()
+        if (-not $method) { $method = 'cms' }
+
+        if ($method -in 'cms','both') {
+            try {
+                # Mot de passe PFX lu depuis une variable d'environnement (jamais en clair).
+                $pwd = $null
+                if ($Signing.cms.pfxPasswordEnvVar) {
+                    $raw = [Environment]::GetEnvironmentVariable([string]$Signing.cms.pfxPasswordEnvVar)
+                    if ($raw) { $pwd = ConvertTo-SecureString $raw -AsPlainText -Force }
+                }
+                $signatures += Add-CmsSignature -FilePath $jsonPath `
+                                -Thumbprint $Signing.cms.certThumbprint `
+                                -PfxPath    $Signing.cms.pfxPath `
+                                -PfxPassword $pwd
+            } catch { Write-Warning "Signature CMS non appliquée : $($_.Exception.Message)" }
+        }
+
+        if ($method -in 'gpg','both') {
+            try {
+                $signatures += Add-GpgSignature -FilePath $jsonPath `
+                                -KeyId $Signing.gpg.keyId `
+                                -Armor:([bool]$Signing.gpg.armor)
+            } catch { Write-Warning "Signature GPG non appliquée : $($_.Exception.Message)" }
+        }
+
+        if ($Signing.timestampUrl) {
+            $tsPath = Add-Rfc3161Timestamp -FilePath $jsonPath -TimestampUrl $Signing.timestampUrl
+        }
+    }
+
+    # Bloc HTML des signatures cryptographiques (traçabilité dans le certificat)
+    if (@($signatures).Count -gt 0) {
+        $sigLines = ($signatures | ForEach-Object {
+            " - {0} : {1} [{2}]" -f (& $enc $_.Type), (& $enc $_.Signer), (& $enc $_.Thumbprint)
+        }) -join "<br>`n"
+        $sigHtml = "Signature(s) cryptographique(s) du manifeste :<br>`n$sigLines"
+        if ($tsPath) { $sigHtml += "<br>`nHorodatage RFC 3161 : " + [System.IO.Path]::GetFileName($tsPath) }
+    } else {
+        $sigHtml = "Signature cryptographique : aucune (mode preview ou signature desactivee)."
+    }
+
+    # --- Certificat HTML lisible ---
     $rows = ($Items | ForEach-Object {
         "<tr><td>{0}</td><td class='m'>{1}</td><td class='r'>{2}</td><td class='m'>{3}</td><td>{4}</td><td class='{5}'>{6}</td></tr>" -f `
             (& $enc $_.Source), (& $enc $_.Path), $_.SizeBytes, (& $enc $_.SHA256), `
@@ -240,6 +302,7 @@ function New-DispositionCertificate {
  SCEAU D'INTEGRITE<br>
  Manifeste JSON : @@CERTID@@.manifest.json<br>
  SHA-256 du manifeste : @@MANIFESTHASH@@<br>
+ @@SIGNATURES@@<br>
  La preuve de "ce qui" a ete detruit repose sur l'inventaire en fin de document ;
  la preuve "que" cela a ete detruit repose sur ce certificat signe/horodate.
 </div>
@@ -275,45 +338,12 @@ function New-DispositionCertificate {
         Replace('@@FAILED@@',       [string]$failed).
         Replace('@@ROWS@@',         [string]$rows).
         Replace('@@MANIFESTHASH@@', [string]$manifestHash).
+        Replace('@@SIGNATURES@@',   [string]$sigHtml).
         Replace('@@EXAMINERNAME@@', [string]$Meta.examiner.name).
         Replace('@@WITNESSNAME@@',  [string]$Meta.witness.name)
 
     $htmlPath = Join-Path $OutputDir "$certId.certificate.html"
     $html | Set-Content -Path $htmlPath -Encoding UTF8
-
-    # --- Scellement cryptographique : signature(s) + horodatage du MANIFESTE ---
-    $signatures = @(); $tsPath = $null
-    if ($Signing -and $Signing.enabled) {
-        $method = ([string]$Signing.method).ToLower()
-        if (-not $method) { $method = 'cms' }
-
-        if ($method -in 'cms','both') {
-            try {
-                # Mot de passe PFX lu depuis une variable d'environnement (jamais en clair dans la config).
-                $pwd = $null
-                if ($Signing.cms.pfxPasswordEnvVar) {
-                    $raw = [Environment]::GetEnvironmentVariable([string]$Signing.cms.pfxPasswordEnvVar)
-                    if ($raw) { $pwd = ConvertTo-SecureString $raw -AsPlainText -Force }
-                }
-                $signatures += Add-CmsSignature -FilePath $jsonPath `
-                                -Thumbprint $Signing.cms.certThumbprint `
-                                -PfxPath    $Signing.cms.pfxPath `
-                                -PfxPassword $pwd
-            } catch { Write-Warning "Signature CMS non appliquée : $($_.Exception.Message)" }
-        }
-
-        if ($method -in 'gpg','both') {
-            try {
-                $signatures += Add-GpgSignature -FilePath $jsonPath `
-                                -KeyId $Signing.gpg.keyId `
-                                -Armor:([bool]$Signing.gpg.armor)
-            } catch { Write-Warning "Signature GPG non appliquée : $($_.Exception.Message)" }
-        }
-
-        if ($Signing.timestampUrl) {
-            $tsPath = Add-Rfc3161Timestamp -FilePath $jsonPath -TimestampUrl $Signing.timestampUrl
-        }
-    }
 
     [pscustomobject]@{
         CertificateId = $certId

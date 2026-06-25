@@ -62,7 +62,12 @@ Requires **Gpg4win**. Find/create your key:
 ```powershell
 .\New-SigningCertificate.ps1 -Type GPG           # lists your secret keys
 ```
-Then in `config.json`: `method:"gpg"`, `gpg.keyId:"<email or fingerprint>"`.
+Then in `config.json`: `method:"gpg"`, `gpg.keyId:"<email or fingerprint>"`. Leave `gpg.keyId`
+**empty** to auto-select your first secret key — its identity and fingerprint are then recorded
+in the certificate.
+
+The certificate's integrity seal lists the **cryptographic signer(s)** (type, identity,
+fingerprint), so traceability is visible directly in the printable certificate.
 
 `method:"both"` produces `.p7s` **and** `.asc`. `Verify-Certificate.ps1` checks both
 automatically (CMS + `gpg --verify`).
