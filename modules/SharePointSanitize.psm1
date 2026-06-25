@@ -78,14 +78,18 @@ function Invoke-SharePointSanitization {
         Write-Host ("[SPO] {0} : {1} fichier(s)" -f $folder, $spoTotal) -ForegroundColor Cyan
 
         $sidx = 0; $sLastPct = -1
+        $ssw = [System.Diagnostics.Stopwatch]::StartNew(); $sbytes = [int64]0
         foreach ($it in $items) {
             $sidx++
             # Barre de progression (le hachage télécharge chaque fichier : utile sur gros volumes).
             $spct = if ($spoTotal -gt 0) { [int](($sidx / $spoTotal) * 100) } else { 100 }
             if ($spct -ne $sLastPct) {
+                $sel   = $ssw.Elapsed.TotalSeconds
+                $smbps = if ($sel -gt 0) { [math]::Round(($sbytes / 1MB) / $sel, 1) } else { 0 }
+                $seta  = if ($sel -gt 0) { [int](($spoTotal - $sidx) * ($sel / $sidx)) } else { 0 }
                 Write-Progress -Id 2 -Activity ("Sanitization SharePoint [{0}]" -f $Mode) `
-                    -Status ("{0}/{1} fichiers ({2}%)" -f $sidx, $spoTotal, $spct) `
-                    -CurrentOperation $it.ServerRelativeUrl -PercentComplete $spct
+                    -Status ("{0}/{1} fichiers ({2}%) - {3} Mo/s" -f $sidx, $spoTotal, $spct, $smbps) `
+                    -CurrentOperation $it.ServerRelativeUrl -PercentComplete $spct -SecondsRemaining $seta
                 $sLastPct = $spct
             }
 
@@ -106,6 +110,8 @@ function Invoke-SharePointSanitization {
                     $status = 'DELETED'
                 } catch { $status = 'FAILED'; $err = $_.Exception.Message }
             }
+
+            if ($size) { $sbytes += [int64]$size }
 
             $results.Add([pscustomobject]@{
                 Source          = 'SHAREPOINT'

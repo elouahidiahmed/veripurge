@@ -90,8 +90,9 @@ notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires..
 .\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-...manifest.json
 ```
 
-Une **barre de progression** (pourcentage + compteur traités/total + fichier courant)
-s'affiche pendant le traitement local et SharePoint, pour suivre l'avancement sur gros volumes.
+Une **barre de progression** s'affiche pendant le traitement local et SharePoint —
+pourcentage, compteur traités/total, fichier courant, **débit (Mo/s)** et **temps restant
+estimé (ETA)** — pour suivre l'avancement sur gros volumes.
 
 ## Garde-fous intégrés
 

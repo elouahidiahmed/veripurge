@@ -159,14 +159,19 @@ function Invoke-LocalSanitization {
         Write-Host ("[LOCAL] {0} : {1} fichier(s)" -f $root, $files.Count) -ForegroundColor Cyan
 
         $total = $files.Count; $idx = 0; $lastPct = -1
+        $sw = [System.Diagnostics.Stopwatch]::StartNew(); $bytesDone = [int64]0
         foreach ($extFile in $files) {
             $idx++
             # Barre de progression (throttle : redessine seulement quand le % entier change).
             $pct = if ($total -gt 0) { [int](($idx / $total) * 100) } else { 100 }
             if ($pct -ne $lastPct) {
+                $elapsed = $sw.Elapsed.TotalSeconds
+                $mbps = if ($elapsed -gt 0) { [math]::Round(($bytesDone / 1MB) / $elapsed, 1) } else { 0 }
+                $eta  = if ($elapsed -gt 0) { [int](($total - $idx) * ($elapsed / $idx)) } else { 0 }
                 Write-Progress -Id 1 -Activity ("Sanitization locale [{0}]" -f $Mode) `
-                    -Status ("{0}/{1} fichiers ({2}%)" -f $idx, $total, $pct) `
-                    -CurrentOperation (ConvertFrom-ExtendedPath $extFile) -PercentComplete $pct
+                    -Status ("{0}/{1} fichiers ({2}%) - {3} Mo/s" -f $idx, $total, $pct, $mbps) `
+                    -CurrentOperation (ConvertFrom-ExtendedPath $extFile) `
+                    -PercentComplete $pct -SecondsRemaining $eta
                 $lastPct = $pct
             }
 
@@ -190,6 +195,8 @@ function Invoke-LocalSanitization {
                 })
                 continue
             }
+
+            if ($entry.SizeBytes) { $bytesDone += [int64]$entry.SizeBytes }
 
             if ($Mode -eq 'Destroy') {
                 try {
