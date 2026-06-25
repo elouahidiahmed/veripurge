@@ -111,6 +111,50 @@ notepad .\config.json   # caseId, chemins, site SPO, autorisation, signataires..
 Le certificat HTML inclut le **SHA-256 du manifeste** : tout doc imprimé reste rattaché
 cryptographiquement au manifeste signé.
 
+## Vérifier une signature
+
+**Le plus simple — le vérificateur fourni.** Il recalcule l'empreinte du manifeste et valide
+toute signature trouvée à côté (`.p7s` CMS/X.509 **et** `.asc` GPG), et signale un jeton RFC 3161 :
+
+```powershell
+.\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json
+```
+
+**Vérification indépendante** (pour un tiers qui n'exécute pas VeriPurge) :
+
+- **GPG (`.asc`)** — importez une fois la clé publique du signataire, puis vérifiez :
+  ```powershell
+  gpg --import cle-publique-signataire.asc     # uniquement la première fois
+  gpg --verify COD-<case>-<ts>.manifest.json.asc COD-<case>-<ts>.manifest.json
+  # « Good signature from ... » => le manifeste est intact.
+  ```
+
+- **CMS / X.509 (`.p7s`)** — avec OpenSSL (multi-plateforme, sans PowerShell). La signature
+  est détachée et encodée en DER, sur les octets bruts : passez donc `-binary` :
+  ```bash
+  openssl cms -verify -binary -inform DER \
+    -in      COD-<case>-<ts>.manifest.json.p7s \
+    -content COD-<case>-<ts>.manifest.json \
+    -CAfile  signataire-ou-ca.pem -out /dev/null
+  # Cert auto-signé / interne : ajoutez -noverify pour ne contrôler que la signature
+  # (pas la chaîne de confiance).
+  ```
+
+- **Empreinte seule (sans clé)** — recalculez et comparez avec la valeur « SHA-256 du
+  manifeste » scellée dans le certificat HTML :
+  ```powershell
+  Get-FileHash .\COD-<case>-<ts>.manifest.json -Algorithm SHA256
+  ```
+
+- **Horodatage RFC 3161 (`.tsr`)** — avec OpenSSL :
+  ```bash
+  openssl ts -verify -in COD-<case>-<ts>.manifest.json.tsr \
+    -data COD-<case>-<ts>.manifest.json -CAfile tsa-ca.pem
+  ```
+
+> Toute divergence — empreinte différente, ou `BAD signature` — signifie que le manifeste a été
+> altéré après émission : considérez le certificat comme **invalide**.
+
 ## ⚠ Limites par type de support (à connaître / documenter)
 
 - **HDD magnétique** : l'overwrite multi-passes est efficace (NIST *Purge*).

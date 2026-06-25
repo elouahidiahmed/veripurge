@@ -110,6 +110,50 @@ notepad .\config.json   # caseId, paths, SPO site, authorization, signatories...
 The HTML certificate embeds the **SHA-256 of the manifest**: any printed copy stays
 cryptographically tied to the signed manifest.
 
+## Verifying a signature
+
+**Easiest — the bundled verifier.** It recomputes the manifest hash and validates every
+signature found next to it (`.p7s` CMS/X.509 **and** `.asc` GPG), and flags an RFC 3161 token:
+
+```powershell
+.\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json
+```
+
+**Independent verification** (for a third party who does not run VeriPurge):
+
+- **GPG (`.asc`)** — import the signer's public key once, then verify:
+  ```powershell
+  gpg --import signer-public-key.asc          # only needed the first time
+  gpg --verify COD-<case>-<ts>.manifest.json.asc COD-<case>-<ts>.manifest.json
+  # "Good signature from ..." => the manifest is intact.
+  ```
+
+- **CMS / X.509 (`.p7s`)** — with OpenSSL (cross-platform, no PowerShell needed). The
+  signature is detached and DER-encoded, over the raw bytes, so pass `-binary`:
+  ```bash
+  openssl cms -verify -binary -inform DER \
+    -in      COD-<case>-<ts>.manifest.json.p7s \
+    -content COD-<case>-<ts>.manifest.json \
+    -CAfile  signer-or-ca.pem -out /dev/null
+  # Self-signed / internal cert: add -noverify to check the signature only
+  # (not the trust chain).
+  ```
+
+- **Hash only (no keys)** — recompute and compare with the "SHA-256 of the manifest" value
+  sealed in the HTML certificate:
+  ```powershell
+  Get-FileHash .\COD-<case>-<ts>.manifest.json -Algorithm SHA256
+  ```
+
+- **RFC 3161 timestamp (`.tsr`)** — with OpenSSL:
+  ```bash
+  openssl ts -verify -in COD-<case>-<ts>.manifest.json.tsr \
+    -data COD-<case>-<ts>.manifest.json -CAfile tsa-ca.pem
+  ```
+
+> Any mismatch — a different hash, or `BAD signature` — means the manifest was altered after
+> issuance: treat the certificate as **invalid**.
+
 ## ⚠ Limits by media type (know and document them)
 
 - **Magnetic HDD**: multi-pass overwrite is effective (NIST *Purge*).
