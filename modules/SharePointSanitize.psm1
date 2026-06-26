@@ -23,8 +23,9 @@ function Connect-DisposerSharePoint {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$SiteUrl,
-        [ValidateSet('interactive','appcert')][string]$Mode = 'interactive',
-        [string]$ClientId, [string]$Tenant, [string]$Thumbprint
+        [ValidateSet('interactive','appcert','credentials')][string]$Mode = 'interactive',
+        [string]$ClientId, [string]$Tenant, [string]$Thumbprint,
+        [string]$Username, [string]$PasswordEnvVar
     )
     if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
         throw "Module PnP.PowerShell absent. Installez-le : Install-Module PnP.PowerShell -Scope CurrentUser"
@@ -38,8 +39,28 @@ function Connect-DisposerSharePoint {
             }
             Connect-PnPOnline -Url $SiteUrl -ClientId $ClientId -Tenant $Tenant -Thumbprint $Thumbprint -ErrorAction Stop
         }
+        'credentials' {
+            # Username/password (ROPC) : NE fonctionne PAS avec MFA / Conditional Access.
+            if ($Username) {
+                $pwRaw = if ($PasswordEnvVar) { [Environment]::GetEnvironmentVariable($PasswordEnvVar) } else { $null }
+                if ($pwRaw) {
+                    $sec  = ConvertTo-SecureString $pwRaw -AsPlainText -Force
+                    $cred = New-Object System.Management.Automation.PSCredential($Username, $sec)
+                } else {
+                    $cred = Get-Credential -UserName $Username -Message "Mot de passe SharePoint pour $Username"
+                }
+            } else {
+                $cred = Get-Credential -Message "Identifiants SharePoint (compte SANS MFA)"
+            }
+            $params = @{ Url = $SiteUrl; Credentials = $cred; ErrorAction = 'Stop' }
+            if ($ClientId) { $params['ClientId'] = $ClientId }   # requis par PnP.PowerShell 2.x
+            Connect-PnPOnline @params
+            Write-Warning "Auth identifiants (ROPC) : incompatible MFA/Conditional Access ; PnP 2.x exige aussi -ClientId (app publique, sans secret). Préférez 'interactive' ou 'appcert'."
+        }
         default {
-            Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+            $params = @{ Url = $SiteUrl; Interactive = $true; ErrorAction = 'Stop' }
+            if ($ClientId) { $params['ClientId'] = $ClientId }
+            Connect-PnPOnline @params
         }
     }
     Write-Host "[SPO] Connecté à $SiteUrl" -ForegroundColor Cyan

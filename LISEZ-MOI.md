@@ -40,7 +40,13 @@ veripurge/
 ## Prérequis
 
 - **PowerShell en administrateur** (partie locale). PowerShell **7+** recommandé (horodatage RFC 3161).
-- Pour SharePoint : `Install-Module PnP.PowerShell -Scope CurrentUser`
+- Pour SharePoint : `Install-Module PnP.PowerShell -Scope CurrentUser` (PnP 2.x nécessite PowerShell 7).
+  Authentification via `sharepoint.auth.mode` :
+  - `interactive` — connexion navigateur, compatible MFA (**recommandé**) ;
+  - `appcert` — app + certificat, sans interaction (idéal compte de service) ;
+  - `credentials` — identifiant/mot de passe. **Ne fonctionne pas avec MFA / Conditional Access**,
+    et PnP 2.x exige quand même un `clientId` (app publique, sans secret). Le mot de passe est lu
+    depuis la variable d'env nommée dans `auth.passwordEnvVar` (ou demandé) — jamais stocké dans la config.
 - Pour la signature : voir la section **Signature** ci-dessous.
 
 ## Signature du certificat (X.509 et/ou GPG)

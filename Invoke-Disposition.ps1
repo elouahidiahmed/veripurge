@@ -109,12 +109,17 @@ if ($cfg.local.enabled) {
 
 # --- 2) Sanitization SharePoint ---
 if ($cfg.sharepoint.enabled) {
+    $spoAuth  = $cfg.sharepoint.auth
+    $spoUser  = if ($spoAuth.PSObject.Properties['username'])       { $spoAuth.username }       else { '' }
+    $spoPwEnv = if ($spoAuth.PSObject.Properties['passwordEnvVar']) { $spoAuth.passwordEnvVar } else { '' }
     Connect-DisposerSharePoint `
         -SiteUrl $cfg.sharepoint.siteUrl `
-        -Mode $cfg.sharepoint.auth.mode `
-        -ClientId $cfg.sharepoint.auth.clientId `
-        -Tenant $cfg.sharepoint.auth.tenant `
-        -Thumbprint $cfg.sharepoint.auth.thumbprint
+        -Mode $spoAuth.mode `
+        -ClientId $spoAuth.clientId `
+        -Tenant $spoAuth.tenant `
+        -Thumbprint $spoAuth.thumbprint `
+        -Username $spoUser `
+        -PasswordEnvVar $spoPwEnv
 
     $spoItems = Invoke-SharePointSanitization `
         -Folders $cfg.sharepoint.folders `
