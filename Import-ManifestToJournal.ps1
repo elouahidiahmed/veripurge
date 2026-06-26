@@ -17,7 +17,7 @@
     (exactement le chemin attendu par Invoke-Disposition.ps1).
 
 .EXAMPLE
-    .\Import-ManifestToJournal.ps1 -ManifestPath 'D:\Purge Evidence\COD-BNC-001-20260625-132908.manifest.json'
+    .\Import-ManifestToJournal.ps1 -ManifestPath 'D:\Purge Evidence\COD-xxx-001-20260625-132908.manifest.json'
     # puis :
     .\Invoke-Disposition.ps1 -ConfigPath .\config.json -Confirm
 #>
