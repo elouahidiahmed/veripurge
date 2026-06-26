@@ -157,6 +157,17 @@ anything:
 It reads the existing manifest and emits a **new** certificate (new id) covering the same
 inventory; the per-file destruction timestamps are preserved and the original files stay intact.
 
+**Merge two (or more) certificates.** To consolidate separate runs into a single certificate,
+merge their manifests:
+
+```powershell
+.\Merge-Certificate.ps1 -ManifestPath .\COD-...-A.manifest.json, .\COD-...-B.manifest.json -Sign gpg
+```
+
+The inventories are unioned and de-duplicated by source+path (best status wins — a file
+`DESTROYED` in one run beats `FAILED` in another); a new signed certificate covers everything,
+and the source manifests stay intact.
+
 ## What each run produces (in `outputDir`)
 
 | File | Purpose |

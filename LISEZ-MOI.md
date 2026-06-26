@@ -158,6 +158,17 @@ Le script relit le manifeste existant et produit un **nouveau** certificat (nouv
 le même inventaire ; les horodatages de destruction par fichier sont conservés et les fichiers
 d'origine restent intacts.
 
+**Fusionner deux certificats (ou plus).** Pour consolider des runs séparés en un seul certificat,
+fusionnez leurs manifestes :
+
+```powershell
+.\Merge-Certificate.ps1 -ManifestPath .\COD-...-A.manifest.json, .\COD-...-B.manifest.json -Sign gpg
+```
+
+Les inventaires sont réunis et dédoublonnés par source+chemin (le meilleur statut l'emporte — un
+fichier `DESTROYED` dans un run prime sur `FAILED` dans un autre) ; un nouveau certificat signé
+couvre l'ensemble, et les manifestes source restent intacts.
+
 ## Ce que produit chaque exécution (dans `outputDir`)
 
 | Fichier | Rôle |
