@@ -19,13 +19,18 @@
     Méthode de signature du nouveau manifeste : gpg (défaut), cms, both, ou none.
 
 .PARAMETER GpgKeyId
-    Clé GPG (email/empreinte). Vide = 1re clé secrète auto-détectée.
+    Clé GPG à utiliser : email, keyid (court/long) ou empreinte. Vide = 1re clé secrète.
+    Pour lister vos clés et leurs ID : .\New-SigningCertificate.ps1 -Type GPG
 
 .PARAMETER OutputDir
     Dossier de sortie. Défaut : le dossier du manifeste source.
 
 .EXAMPLE
-    # Réémettre signé GPG (clé par défaut auto-détectée) :
+    # Réémettre en CHOISISSANT explicitement la clé GPG (email ou empreinte) :
+    .\Rebuild-Certificate.ps1 -ManifestPath .\COD-...manifest.json -Sign gpg -GpgKeyId elouahidi.ahmed@gmail.com
+
+.EXAMPLE
+    # Réémettre signé GPG (1re clé secrète, auto-détectée) :
     .\Rebuild-Certificate.ps1 -ManifestPath 'D:\Purge Evidence\COD-BNC-001-20260625-132908.manifest.json'
 
 .EXAMPLE

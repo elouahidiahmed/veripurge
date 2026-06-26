@@ -53,7 +53,8 @@ function Add-CmsSignature {
 
 function Add-GpgSignature {
     <# Signature GPG/OpenPGP détachée (.asc en ASCII-armor, sinon .sig binaire).
-       Si -KeyId est vide, sélectionne et reporte la 1re clé secrète disponible. #>
+       -KeyId : email / keyid / empreinte de la clé SECRÈTE à utiliser. Vide = 1re clé.
+       Erreur explicite (avec la liste des clés) si l'identifiant demandé est introuvable. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FilePath,
@@ -64,41 +65,37 @@ function Add-GpgSignature {
     $gpg = Get-Command gpg -ErrorAction SilentlyContinue
     if (-not $gpg) { throw "gpg introuvable dans le PATH (installez Gpg4win, puis rouvrez la session)." }
 
-    # --- Résolution de la clé : KeyId vide -> 1re clé secrète (empreinte + identité) ---
-    $signerUid = $KeyId
-    if (-not $KeyId) {
-        foreach ($l in (& $gpg.Source --list-secret-keys --with-colons 2>$null)) {
-            $p = $l -split ':'
-            if (-not $KeyId     -and $p[0] -eq 'fpr') { $KeyId = $p[9] }       # empreinte primaire
-            if (-not $signerUid -and $p[0] -eq 'uid') { $signerUid = $p[9] }   # "Nom <email>"
-        }
-        if (-not $KeyId) { throw "Aucune clé secrète GPG. Créez-en une : gpg --full-generate-key" }
-        if (-not $signerUid) { $signerUid = $KeyId }
-        Write-Host ("[SIGN] Clé GPG par défaut : {0} ({1})" -f $signerUid, $KeyId) -ForegroundColor DarkCyan
+    # --- Résolution de la clé secrète (filtrée par -KeyId si fourni, sinon la 1re) ---
+    $secArgs = @('--list-secret-keys','--with-colons')
+    if ($KeyId) { $secArgs += $KeyId }
+    $secOut = & $gpg.Source @secArgs 2>$null
+    if (-not $secOut) {
+        $avail = (& $gpg.Source --list-secret-keys --keyid-format long 2>$null) -join [Environment]::NewLine
+        throw "Clé secrète GPG introuvable pour '$KeyId'. Clés disponibles :`n$avail"
     }
+    $fpr = $null; $signerUid = $null
+    foreach ($l in $secOut) {
+        $p = $l -split ':'
+        if (-not $fpr       -and $p[0] -eq 'fpr') { $fpr = $p[9] }       # empreinte primaire
+        if (-not $signerUid -and $p[0] -eq 'uid') { $signerUid = $p[9] } # "Nom <email>"
+    }
+    if (-not $fpr) { throw "Aucune clé secrète GPG. Créez-en une : gpg --full-generate-key" }
+    if (-not $signerUid) { $signerUid = $fpr }
+    Write-Host ("[SIGN] Clé GPG : {0} ({1})" -f $signerUid, $fpr) -ForegroundColor DarkCyan
 
     $ext     = if ($Armor) { 'asc' } else { 'sig' }
     $sigPath = "$FilePath.$ext"
     if (Test-Path $sigPath) { Remove-Item -LiteralPath $sigPath -Force }
 
-    # --local-user toujours fourni : la clé utilisée == la clé reportée (déterministe).
-    $gpgArgs = @('--batch','--yes','--detach-sign','--local-user', $KeyId)
+    # --local-user = empreinte : la clé utilisée == la clé reportée (déterministe).
+    $gpgArgs = @('--batch','--yes','--detach-sign','--local-user', $fpr)
     if ($Armor) { $gpgArgs += '--armor' }
     $gpgArgs += @('--output', $sigPath, $FilePath)
 
     & $gpg.Source @gpgArgs
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sigPath)) {
-        throw "gpg a échoué (exit $LASTEXITCODE). Vérifiez que la clé secrète '$KeyId' existe."
+        throw "gpg a échoué (exit $LASTEXITCODE) pour la clé $fpr."
     }
-
-    # Empreinte complète de la clé signataire (traçabilité dans le certificat)
-    $fpr = $null
-    try {
-        $out = & $gpg.Source --list-keys --with-colons $KeyId 2>$null
-        $fprLine = ($out | Select-String '^fpr:') | Select-Object -First 1
-        if ($fprLine) { $fpr = ($fprLine.ToString() -split ':')[9] }
-    } catch {}
-    if (-not $fpr) { $fpr = $KeyId }
 
     Write-Host "[SIGN] Signature GPG écrite : $sigPath" -ForegroundColor Green
     return [pscustomobject]@{
