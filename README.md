@@ -146,6 +146,17 @@ manifest, then re-run the same destroy command:
 The already-destroyed files are skipped, the failed ones retried, and you get **one
 consolidated certificate** covering everything.
 
+**Reissue a certificate with the current template.** To regenerate the certificate of a past
+run (e.g. with the modern design) and re-sign it with your key — without re-destroying
+anything:
+
+```powershell
+.\Rebuild-Certificate.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json -Sign gpg
+```
+
+It reads the existing manifest and emits a **new** certificate (new id) covering the same
+inventory; the per-file destruction timestamps are preserved and the original files stay intact.
+
 ## What each run produces (in `outputDir`)
 
 | File | Purpose |

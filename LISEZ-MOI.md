@@ -147,6 +147,17 @@ le manifeste précédent, puis relancez la même commande de destruction :
 Les fichiers déjà détruits sont ignorés, les `FAILED` réessayés, et vous obtenez **un seul
 certificat consolidé** couvrant l'ensemble.
 
+**Réémettre un certificat avec le template actuel.** Pour régénérer le certificat d'un run
+passé (ex. avec le design moderne) et le re-signer avec votre clé — sans rien re-détruire :
+
+```powershell
+.\Rebuild-Certificate.ps1 -ManifestPath .\certificates\COD-<case>-<ts>.manifest.json -Sign gpg
+```
+
+Le script relit le manifeste existant et produit un **nouveau** certificat (nouvel id) couvrant
+le même inventaire ; les horodatages de destruction par fichier sont conservés et les fichiers
+d'origine restent intacts.
+
 ## Ce que produit chaque exécution (dans `outputDir`)
 
 | Fichier | Rôle |
