@@ -31,7 +31,7 @@
 
 .EXAMPLE
     # Réémettre signé GPG (1re clé secrète, auto-détectée) :
-    .\Rebuild-Certificate.ps1 -ManifestPath 'D:\Purge Evidence\COD-BNC-001-20260625-132908.manifest.json'
+    .\Rebuild-Certificate.ps1 -ManifestPath 'D:\Purge Evidence\COD-xxx-001-20260625-132908.manifest.json'
 
 .EXAMPLE
     # Signature X.509 par empreinte + horodatage (PowerShell 7) :
