@@ -21,7 +21,7 @@
     Dossier de sortie. Défaut : le dossier du 1er manifeste.
 
 .EXAMPLE
-    .\Merge-Certificate.ps1 -ManifestPath .\COD-BNC-001-A.manifest.json, .\COD-BNC-001-B.manifest.json -Sign gpg
+    .\Merge-Certificate.ps1 -ManifestPath .\COD-xxx-001-A.manifest.json, .\COD-xxx-001-B.manifest.json -Sign gpg
 #>
 [CmdletBinding()]
 param(
