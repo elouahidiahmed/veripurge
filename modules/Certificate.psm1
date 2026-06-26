@@ -51,6 +51,21 @@ function Add-CmsSignature {
     }
 }
 
+function Resolve-GpgCommand {
+    <# Renvoie le chemin de gpg.exe : PATH d'abord, sinon emplacements Gpg4win connus. #>
+    [CmdletBinding()]
+    param()
+    $c = Get-Command gpg -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432)) {
+        if ($base) {
+            $p = Join-Path $base 'GnuPG\bin\gpg.exe'
+            if (Test-Path -LiteralPath $p) { return $p }
+        }
+    }
+    return $null
+}
+
 function Add-GpgSignature {
     <# Signature GPG/OpenPGP détachée (.asc en ASCII-armor, sinon .sig binaire).
        -KeyId : email / keyid / empreinte de la clé SECRÈTE à utiliser. Vide = 1re clé.
@@ -62,15 +77,15 @@ function Add-GpgSignature {
         [switch]$Armor
     )
 
-    $gpg = Get-Command gpg -ErrorAction SilentlyContinue
-    if (-not $gpg) { throw "gpg introuvable dans le PATH (installez Gpg4win, puis rouvrez la session)." }
+    $gpgExe = Resolve-GpgCommand
+    if (-not $gpgExe) { throw "gpg introuvable (PATH + emplacements Gpg4win). Installez Gpg4win." }
 
     # --- Résolution de la clé secrète (filtrée par -KeyId si fourni, sinon la 1re) ---
     $secArgs = @('--list-secret-keys','--with-colons')
     if ($KeyId) { $secArgs += $KeyId }
-    $secOut = & $gpg.Source @secArgs 2>$null
+    $secOut = & $gpgExe @secArgs 2>$null
     if (-not $secOut) {
-        $avail = (& $gpg.Source --list-secret-keys --keyid-format long 2>$null) -join [Environment]::NewLine
+        $avail = (& $gpgExe --list-secret-keys --keyid-format long 2>$null) -join [Environment]::NewLine
         throw "Clé secrète GPG introuvable pour '$KeyId'. Clés disponibles :`n$avail"
     }
     $fpr = $null; $signerUid = $null
@@ -92,7 +107,7 @@ function Add-GpgSignature {
     if ($Armor) { $gpgArgs += '--armor' }
     $gpgArgs += @('--output', $sigPath, $FilePath)
 
-    & $gpg.Source @gpgArgs
+    & $gpgExe @gpgArgs
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sigPath)) {
         throw "gpg a échoué (exit $LASTEXITCODE) pour la clé $fpr."
     }
@@ -435,4 +450,4 @@ function New-DispositionCertificate {
     }
 }
 
-Export-ModuleMember -Function Add-CmsSignature, Add-GpgSignature, Add-Rfc3161Timestamp, New-DispositionCertificate
+Export-ModuleMember -Function Add-CmsSignature, Add-GpgSignature, Add-Rfc3161Timestamp, New-DispositionCertificate, Resolve-GpgCommand

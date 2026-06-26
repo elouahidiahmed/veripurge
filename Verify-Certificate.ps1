@@ -1,6 +1,7 @@
 ﻿<#
 .SYNOPSIS
-    Vérifie l'intégrité d'un certificat émis : hash du manifeste + signature CMS (.p7s).
+    Vérifie l'intégrité d'un certificat émis : hash du manifeste + signatures CMS (.p7s)
+    et GPG (.asc/.sig) + présence du jeton d'horodatage (.tsr).
 .EXAMPLE
     .\Verify-Certificate.ps1 -ManifestPath .\certificates\COD-CASE-2026-0042-20260623-101500.manifest.json
 #>
@@ -9,6 +10,7 @@ param([Parameter(Mandatory)][string]$ManifestPath)
 
 Set-StrictMode -Version Latest
 try { Add-Type -AssemblyName System.Security -ErrorAction Stop } catch {}
+Import-Module (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'modules\Certificate.psm1') -Force
 
 if (-not (Test-Path $ManifestPath)) { throw "Manifeste introuvable : $ManifestPath" }
 
@@ -38,14 +40,18 @@ if (Test-Path $sigPath) {
 }
 
 # --- Signature GPG (.asc armor ou .sig binaire) ---
+$gpgExe = Resolve-GpgCommand
 foreach ($ext in 'asc','sig') {
     $gpgSig = "$ManifestPath.$ext"
     if (Test-Path $gpgSig) {
-        $gpg = Get-Command gpg -ErrorAction SilentlyContinue
-        if (-not $gpg) { Write-Warning "Signature GPG présente ($ext) mais gpg introuvable pour la vérifier."; continue }
-        & $gpg.Source --verify $gpgSig $ManifestPath
+        if (-not $gpgExe) {
+            Write-Warning "Signature GPG présente ($ext) mais gpg introuvable. Ouvrez un nouveau terminal après l'install Gpg4win, ou ajoutez '$($env:ProgramFiles)\GnuPG\bin' au PATH."
+            continue
+        }
+        Write-Host "Verification GPG ($ext)..." -ForegroundColor Cyan
+        & $gpgExe --verify $gpgSig $ManifestPath 2>&1 | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -eq 0) { Write-Host "SIGNATURE GPG VALIDE ($ext)." -ForegroundColor Green }
-        else { Write-Host "SIGNATURE GPG INVALIDE ($ext)." -ForegroundColor Red }
+        else { Write-Host "SIGNATURE GPG INVALIDE ($ext) (gpg exit $LASTEXITCODE). Clé publique du signataire importée ? (gpg --import cle.asc)" -ForegroundColor Red }
     }
 }
 
